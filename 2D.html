@@ -1,180 +1,233 @@
 <html>
-<head><meta charset="CP1251"></head>
-<body style="-moz-user-select:none;">
-<div style="height:100;position:fixed;line-height:10px">
-<H1 style="text-align:center;font-size:30pt;font-family:Arial;"></H1></div>
-<div align=center>
-<canvas width=700 height=700 style="border:1px solid #f00"></canvas>
-</div>
-<script>
-const	a_canvas = document.getElementsByTagName( "canvas" )[0],
-	FrameCounter = document.getElementsByTagName( "h1" )[0],
-	Cw = a_canvas.width,
-	Ch = a_canvas.height,
-	Bg_color = [ 220, 220, 220 ],
-	canvas = a_canvas.getContext( "2d" );
-var	Playing = null,
-	FPS = 0,
-	Center = [ 335, 344 ],
-	Speed = 0,
-	SpeedVec = [ 0, 0 ],
-	Direction = [ 0, -1 ], //должен быть нормализованным
-	c_buffer = canvas.getImageData( 0, 0, Cw, Ch ),
-	Dots = [[ 310, 361 ],
-		[ 335, 310 ],
-		[ 360, 361 ] ],
-	RotatMatrL = [	[Math.cos(0.17), -Math.sin(0.17)],
-				[Math.sin(0.17),  Math.cos(0.17)] ],
-	RotatMatrR = [	[Math.cos(-0.17), -Math.sin(-0.17)],
-				[Math.sin(-0.17),  Math.cos(-0.17)] ];
-const	c_pitch = 4*c_buffer.width;
+  <head>
+	   <meta charset="CP1251">
+     <style type="text/css">
+        body {
+					font-family:Calibri;
+					caret-color: rgba(0,0,0,0);
+				}
+        canvas {border:1px solid #f00;}
+        #fps, #speedo {font-size:30pt;}
+		    #pause {
+					position:absolute;
+					top:310px;
+					left:50%;
+					transform: translate(-50%, 0);
+					z-index:99;
+          display: block;
+					font-family:Arial;
+					font-size:50px;
+					font-weight:900;
+					color:rgba(0,0,0,.5);
+        }
+      </style>
+	</head>
+  <body>
+    <div style="position:fixed;width:240px;height:300px">
+			<i>FrameRate: </i><span id="fps">0</span><br>
+			<i>Speed: </i><span  id="speedo">0</span><br>
+			<span>You can manipulape whith arrow-buttons.<br>Start game/Pause - Pause button.</span>
+    </div>
+    <span id="pause">P A U S E</span>
+		<div style="text-align:center">
+			<canvas width="700px" height="700px"></canvas>
+		</div>
+		<script>
+      const	A_CANVAS = document.getElementsByTagName( "canvas" )[0],
+						FRAME_COUNTER = document.getElementById( "fps" ),
+				    SPEEDO = document.getElementById( "speedo" ),
+				    PAUSE_BANNER = document.getElementById( "pause" ),
+						WIDTH = A_CANVAS.width,
+						HEIGHT = A_CANVAS.height,
+						COLOR = [ 0, 0, 0 ],
+						ROTATE_MATRIX_L = [	[Math.cos(0.17), -Math.sin(0.17)],
+														    [Math.sin(0.17),  Math.cos(0.17)] ],
+						ROTATE_MATRIX_R = [	[Math.cos(-0.17), -Math.sin(-0.17)],
+														    [Math.sin(-0.17),  Math.cos(-0.17)] ],
+						CANVAS = A_CANVAS.getContext( "2d" ),
+				    C_BUFFER = CANVAS.getImageData( 0, 0, WIDTH, HEIGHT ),
+				    C_PITCH = 4 * C_BUFFER.width;
+			let	drawInterval = null,
+					fps = 0,
+					speed = 0,
+					speedVec = [ 0, 0 ],
+					direction = [ 0, -1 ], //normalized
+					center = [ 335, 336 ],
+					tank = [[ 320, 315 ], //body
+									[ 350, 315 ],
+									[ 350, 356 ],
+								  [ 320, 356 ], 
+								  [ 330, 325 ], //tower
+									[ 340, 325 ],
+									[ 340, 336 ],
+								  [ 330, 336 ],
+								  [ 335, 325 ], //gun
+								  [ 335, 308 ]];
 
+			showFPS = function() {
+				FRAME_COUNTER.innerHTML = fps;
+				fps = 0;
+			}
 
-showFPS = function()
-{
-	FrameCounter.innerHTML = FPS;
-	FPS = 0;
-}
+			putPixel = function( x, y, color ) {
+				let offset = 4*x + C_PITCH*y - 1;
+				C_BUFFER.data[++offset] = color[0];
+				C_BUFFER.data[++offset] = color[1];
+				C_BUFFER.data[++offset] = color[2];
+				C_BUFFER.data[++offset] = 255;
+			}
 
-putPixel = function( x, y, color )
-{
-	let offset = 4*x + c_pitch*y - 1;
-	c_buffer.data[++offset] = color[0];
-	c_buffer.data[++offset] = color[1];
-	c_buffer.data[++offset] = color[2];
-	c_buffer.data[++offset] = 255;
-}
+			clearCanvas = function() {
+				for( let i=0; i<C_BUFFER.data.length; ++i )
+					C_BUFFER.data[i] = 255
+			}
 
-clearCanvas = function(){
-	for( let i=0; i<c_buffer.data.length; ++i )
-		c_buffer.data[i] = 255
-}
+			dot = function( d1, d2 ) {
+				return d1.reduce(function(s,item,i){return s + d1[i]*d2[i]}) }
 
-dot = function( d1, d2 ){
-	return d1.reduce(function(s,item,i){return s + d1[i]*d2[i]}) }
+			subtract = function( d1, d2 ) {
+				return d1.map(function(item,i){ return d1[i] - d2[i] }) }
 
-subtract = function( d1, d2 ){
-	return d1.map(function(item,i){ return d1[i] - d2[i] }) }
+			scalarMultVector = function( s, v ) {
+				return v.map(function(item,i){ return s*v[i] }) }
 
-scalarMultVector = function( s, v ){
-	return v.map(function(item,i){ return s*v[i] }) }
+			arrMultArr = function( a1, a2 ) {
+				return a1.map(function(item, i ){ return a1[i]*a2[i] }) }
 
-arrMultArr = function( a1, a2 ){
-	return a1.map(function(item, i ){ return a1[i]*a2[i] }) }
+			vectorLen = function( v ) {
+				return Math.sqrt( v[0]*v[0] + v[1]*v[1] ) }
 
-vectorLen = function( v ){
-	return Math.sqrt( v[0]*v[0] + v[1]*v[1] ) }
+			normalize = function( vector ) {
+				let l = vectorLen(vector);
+				return [ vector[0]/l, vector[1]/l ]
+			}
 
-normalize = function( vector )
-{
-	let l = vectorLen(vector);
-	return [ vector[0]/l, vector[1]/l ]
-}
+			sumVec = function( v1, v2 ) {
+				return v1.map(function(item,i){ return v1[i] + v2[i] }) }
 
-sumVec = function( v1, v2 ){
-	return v1.map(function(item,i){ return v1[i] + v2[i] }) }
+			matrMultVec = function( m, v ) {
+				return sumVec( scalarMultVector( v[0], m[0] ), scalarMultVector( v[1], m[1] ) ) }
 
-matrMultVec = function( m, v ){
-	return sumVec( scalarMultVector( v[0], m[0] ), scalarMultVector( v[1], m[1] ) ) }
+			acceleration = function( a ) {
+				if( a > 0 ) {
+					if( speed < 3 )
+						speed += a
+				}
+				else
+					if( speed > -1 )
+						speed += a;
+				speedVec = scalarMultVector( speed, direction );
+				SPEEDO.innerHTML = speed;
+			}
 
-acceleration = function( a )
-{
-	if( a > 0 ){
-		if( Speed < 3 ) Speed += a }
-	else
-		if( Speed > -1 ) Speed += a;
-	SpeedVec = scalarMultVector( Speed, Direction );
-}
+			nextMove = function() {
+				for( let i=0; i<tank.length; ++i )
+				  tank[i] = sumVec( tank[i], speedVec );
+				
+				center = sumVec( center, speedVec );
+			}
+			
+			drawTank = function() {
+				//body
+				traceRay( tank[0], tank[1], COLOR );
+				traceRay( tank[1], tank[2], COLOR );
+				traceRay( tank[2], tank[3], COLOR );
+				traceRay( tank[3], tank[0], COLOR );
+				//tower
+				traceRay( tank[4], tank[5], COLOR );
+				traceRay( tank[5], tank[6], COLOR );
+				traceRay( tank[6], tank[7], COLOR );
+				traceRay( tank[7], tank[4], COLOR );
+				//gun
+				traceRay( tank[8], tank[9], COLOR );
+			}
+			
+			checkWallCollision = function() {
+				if( center[0] - 20 < 0 ||
+					  center[0] + 20 > WIDTH ||
+					  center[1] - 20 < 0 ||
+					  center[1] + 20 > HEIGHT ) {
+					play();
+				  PAUSE_BANNER.innerHTML = 'W A S T E D';
+				}
+			}
 
-move = function()
-{
-	Dots[0] = sumVec( Dots[0], SpeedVec );
-	Dots[1] = sumVec( Dots[1], SpeedVec );
-	Dots[2] = sumVec( Dots[2], SpeedVec );
-	Center = sumVec( Center, SpeedVec );
-}
+			rotate = function( RM ) {
+				for( let i=0; i<tank.length; ++i ) {
+					tank[i] = subtract( tank[i], center );
+					tank[i] = matrMultVec( RM, tank[i] );
+					tank[i] = sumVec( tank[i], center );
+				}
+				direction = subtract( tank[9], center );
+				direction = normalize( direction );
+				speedVec = scalarMultVector( speed, direction );
+			}
 
-rotate = function( RM )
-{
-	for( let i=0; i<Dots.length; ++i )
-	{
-		Dots[i] = subtract( Dots[i], Center );
-		Dots[i] = matrMultVec( RM, Dots[i] );
-		Dots[i] = sumVec( Dots[i], Center );
-	}
-	Direction = subtract( Dots[1], Center );
-	Direction = normalize( Direction );
-	SpeedVec = scalarMultVector( Speed, Direction );
-}
+			rotatePoints = function( RM ) {
+				for( let i=0; i<tank.length; ++i ) {
+					tank[i][0] = tank[i][0]*RM[0][0] - tank[i][1]*RM[0][1];
+					tank[i][1] = tank[i][0]*RM[1][0] + tank[i][1]*RM[1][1];
+				}
+			}
 
-rotatePoints = function( RM )
-{
-	for( let i=0; i<Dots.length; ++i )
-	{
-		Dots[i][0] = Dots[i][0]*RM[0][0] - Dots[i][1]*RM[0][1];
-		Dots[i][1] = Dots[i][0]*RM[1][0] + Dots[i][1]*RM[1][1];
-	}
-}
+			traceRay = function( S, F, color ) {
+				let 	i = 1,
+						x = 0,
+						y = 0,
+						v = subtract( F, S),
+						sqrLengthv = v[0]*v[0] + v[1]*v[1],
+						D = normalize( v );
+				P = [];
 
-traceRay = function( S, F, color )
-{
-	let 	i = 1,
-		x = 0,
-		y = 0,
-		v = subtract( F, S),
-		sqrLengthv = v[0]*v[0] + v[1]*v[1],
-		D = normalize( v );
-		P = [];
+				while( ( i*i ) < sqrLengthv ) {
+					P = scalarMultVector( i++, D );
+					x = Math.round( S[0] + P[0] );
+					y = Math.round( S[1] + P[1] );
+					putPixel( x, y, color );
+				}
+			}
 
-	while( ( i*i ) < sqrLengthv )
-	{
-		P = scalarMultVector( i++, D );
-		x = Math.round( S[0] + P[0] );
-		y = Math.round( S[1] + P[1] );
-		putPixel( x, y, color );
-	}
-}
+			drawFrame = function() {
+				clearCanvas();
+        drawTank();
+				nextMove();
+				checkWallCollision();
+				CANVAS.putImageData( C_BUFFER, 0, 0 );
 
-drawFrame = function()
-{
-	clearCanvas();
-	traceRay( Dots[0], Dots[1], [0,0,255] );
-	traceRay( Dots[2], Dots[0], [255,0,0] );
-	traceRay( Dots[1], Dots[2], [0,255,0] );
-	move();
-	canvas.putImageData( c_buffer, 0, 0 );
+				++fps;
+			}
 
-	++FPS;
-}
+			controls = function( event ) {
+				switch( event.keyCode ) {
+					case 38: acceleration(  1 );	break;	//ArrowUp
+					case 40: acceleration( -1 );	break;	//ArrowDown
+					case 37: rotate( ROTATE_MATRIX_L );	break;	//ArrowLeft
+					case 39: rotate( ROTATE_MATRIX_R );	break;	//ArrowRight
+					default: return;
+				}
+			}
+			
+			play = function() {
+				if( drawInterval ) {
+					clearInterval( drawInterval );
+					drawInterval = null;
+					PAUSE_BANNER.style.display = 'block';
+					removeEventListener( "keydown", controls );
+				}
+				else {
+					drawInterval = window.setInterval( drawFrame, 16.7 );
+					PAUSE_BANNER.style.display = 'none';
+					addEventListener( "keydown", controls );
+				}
+			}
+			
+			addEventListener( "keydown", function( event ) {
+				if( event.keyCode == 46 )
+					play();	//Pause
+			} );
 
-play = function()
-{
-	if( Playing )
-	{
-		clearInterval( Playing );
-		Playing = null;
-	}
-	else
-		Playing = window.setInterval( drawFrame, 17 );
-}
-
-addEventListener( "keydown", function( event )
-{
-	switch( event.keyCode )
-	{
-		case 19: play();		break;	//Pause
-		case 38: acceleration(  1 );	break;	//ArrowUp
-		case 40: acceleration( -1 );	break;	//ArrowDown
-		case 37: rotate( RotatMatrL );	break;	//ArrowLeft
-		case 39: rotate( RotatMatrR );	break;	//ArrowRight
-		default: return;
-	}
-} );
-
-
-play();
-window.setInterval( showFPS, 1000 );
-
-</script>
-</body>
+			play();
+			window.setInterval( showFPS, 1000 );
+		</script>
+  </body>
 </html>
